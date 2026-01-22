@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SKY ANALYZER - Pn Edition</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root { 
+            --bg: #000; --card: #1c1c1e; --text: #fff; --border: #333; --sub: #8e8e93;
+            --accent: #0a84ff; --green: #32d74b; --orange: #ff9f0a; --red: #ff453a; 
+        }
+
+        body.light-mode {
+            --bg: #f2f2f7; --card: #fff; --text: #000; --border: #d1d1d6; --sub: #636366;
+        }
+
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; transition: all 0.2s ease; }
+        
+        /* Correction : Autoriser le défilement si l'écran est petit */
+        .app-container { 
+            display: flex; 
+            flex-direction: column; 
+            min-height: 100vh; 
+            padding: 10px; 
+            padding-bottom: 40px; /* Espace de sécurité en bas */
+            box-sizing: border-box; 
+            gap: 8px; 
+            overflow-y: auto; 
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .app-header-container { text-align: center; padding: 10px 0; border-bottom: 2px solid var(--accent); margin-bottom: 4px; position: relative; }
+        .logo-svg { fill: var(--accent); width: 32px; height: 32px; margin-bottom: 5px; }
+        .app-title { letter-spacing: 1px; font-size: 24px; font-weight: 900; color: var(--accent); text-transform: uppercase; margin: 0; display: inline-flex; align-items: center; gap: 8px; justify-content: center; width: 100%; }
+        .app-subtitle { font-size: 14px; color: var(--sub); font-weight: 300; display: block; margin-top: 2px; }
+
+        .status-dot { width: 10px; height: 10px; background: var(--red); border-radius: 50%; box-shadow: 0 0 5px var(--red); transition: all 0.3s; }
+        .status-dot.online { background: var(--green); box-shadow: 0 0 10px var(--green); }
+
+        .theme-toggle { position: absolute; left: 5px; top: 15px; background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; z-index: 10; }
+        .update-btn { position: absolute; right: 5px; top: 15px; background: var(--accent); border: none; color: #fff; border-radius: 18px; padding: 8px 12px; font-size: 10px; font-weight: bold; cursor: pointer; z-index: 10; display: flex; align-items: center; gap: 5px; }
+        .update-btn:active { transform: scale(0.95); opacity: 0.8; }
+
+        /* Correction : Hauteur de carte réduite pour gagner de la place */
+        .map-item { height: 120px; background: var(--card); border-radius: 12px; border: 1px solid var(--border); position: relative; overflow: hidden; flex-shrink: 0; }
+        #map { width: 100%; height: 100%; }
+        
+        .wind-compass-overlay {
+            position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6);
+            padding: 5px 8px; border-radius: 8px; border: 1px solid var(--accent);
+            z-index: 1000; color: white; display: flex; align-items: center; gap: 8px;
+            pointer-events: none; backdrop-filter: blur(4px);
+        }
+        #compass-arrow { font-size: 18px; transition: transform 0.5s ease-out; display: inline-block; color: var(--accent); }
+        #compass-text { font-size: 11px; font-weight: 900; }
+
+        .btn-gps { position: absolute; right: 8px; bottom: 8px; width: 32px; height: 32px; background: #fff; border-radius: 6px; display: flex; align-items: center; justify-content: center; z-index: 1000; border: 1px solid #ccc; }
+
+        .status-card { background: var(--card); border-radius: 10px; padding: 10px; display: flex; align-items: center; gap: 12px; border-left: 6px solid var(--green); border: 1px solid var(--border); flex-shrink: 0; transition: background 0.3s; }
+        
+        .control-card { background: var(--card); border-radius: 12px; padding: 10px; text-align: center; border: 1px solid var(--border); }
+        
+        .search-row { display: flex; gap: 8px; margin-bottom: 10px; width: 100%; }
+        .search-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 12px; font-size: 14px; outline: none; }
+        .search-btn { background: var(--accent); border: none; border-radius: 8px; color: white; padding: 0 15px; cursor: pointer; font-size: 16px; }
+
+        input[type=range] { width: 100%; height: 25px; accent-color: var(--accent); }
+
+        .wind-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .wind-box { background: var(--card); border-radius: 12px; padding: 10px; border: 1px solid var(--border); text-align: center; transition: all 0.3s; }
+        .wind-label { font-size: 9px; color: var(--accent); font-weight: bold; text-transform: uppercase; display: block; margin-bottom: 2px; }
+        
+        .wind-main { font-size: 26px; font-weight: 900; margin: 2px 0; display: block; color: var(--text); }
+        .unit { font-size: 11px; font-weight: 400; opacity: 0.8; margin-left: 2px; }
+
+        .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+        .stat-item { background: var(--card); border-radius: 10px; padding: 8px; border: 1px solid var(--border); text-align: center; transition: all 0.3s; }
+        .stat-val { font-size: 17px; font-weight: 900; display: block; color: var(--text); margin-top: 2px; }
+        
+        .weather-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .weather-box { background: var(--card); border-radius: 12px; padding: 10px; border: 1px solid var(--border); text-align: center; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        
+        .dynamic-weather-display { font-size: 55px; display: inline-block; margin: 0; transform: scaleX(2.5); filter: drop-shadow(0 0 15px rgba(255,255,255,0.3)); }
+        #weather-desc { font-size: 10px; font-weight: bold; color: var(--sub); text-transform: uppercase; margin-top: 5px; }
+
+        .forecast-section { background: var(--card); border-radius: 12px; padding: 10px; border: 1px solid var(--border); }
+        .forecast-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+        .f-box { background: var(--bg); border-radius: 8px; padding: 6px; font-size: 10px; text-align: center; border: 1px solid var(--border); line-height: 1.4; }
+        .f-time { font-weight: 900; color: var(--accent); border-bottom: 1px solid var(--border); display: block; margin-bottom: 4px; padding-bottom: 2px; }
+        .f-icon { font-size: 18px; display: block; margin: 2px 0; }
+        .f-data { display: block; font-weight: 900; color: var(--text); font-size: 12px; }
+        .f-wind { display: block; font-size: 10px; color: var(--sub); font-weight: bold; }
+        
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .spinning { animation: spin 1s linear infinite; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="app-header-container">
+        <button class="theme-toggle" onclick="toggleTheme()">🌓</button>
+        <button class="update-btn" onclick="fetchWeatherData()">
+            <span id="sync-icon">🔄</span> UPDATE
+        </button>
+        <svg class="logo-svg" viewBox="0 0 24 24"><path d="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5.32,7.91L12,11.66L18.68,7.91L12,4.15Z" /></svg>
+        <h1 class="app-title"><div id="conn-status" class="status-dot"></div> SKY ANALYZER</h1>
+        <span class="app-subtitle">Pn Edition</span>
+    </div>
+
+    <div id="status-card" class="status-card">
+        <div id="status-icon" style="font-size: 22px;">✔️</div>
+        <div>
+            <h2 id="status-txt" style="margin:0; font-size:16px; font-weight: 900;">OPÉRATIONNEL</h2>
+            <p id="env-summary" style="margin:0; font-size:10px; color:var(--sub); font-weight:bold;">Localisation active | <span id="temp-val-top">--</span>°C | MAJ: <span id="last-update">--:--</span></p>
+        </div>
+    </div>
+
+    <div class="map-item">
+        <div id="map"></div>
+        <div class="wind-compass-overlay">
+            <span id="compass-arrow">➤</span>
+            <span id="compass-text">--</span>
+        </div>
+        <button class="btn-gps" onclick="centerMap()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="3"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+        </button>
+    </div>
+
+    <div class="control-card">
+        <div class="search-row">
+            <input type="text" id="search-input" class="search-input" placeholder="Chercher une localisation...">
+            <button class="search-btn" onclick="searchLocation()">🔍</button>
+        </div>
+        <input type="range" id="h-slider" min="0" max="250" value="0" step="5" oninput="runAnalysis()">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--sub); font-weight:bold; align-items:center;">
+            <span>SOL</span>
+            <span style="font-size:14px; background:rgba(10,132,255,0.1); padding:2px 8px; border-radius:4px;">ALTITUDE: <b id="h-label" style="color:var(--orange); font-size:22px;">0</b>m</span>
+            <span>250m</span>
+        </div>
+    </div>
+
+    <div class="wind-grid">
+        <div id="v-sol-box" class="wind-box"><span class="wind-label">⚓ Vent Sol</span><span class="wind-main"><span id="v-sol-val">--</span><span class="unit">km/h</span></span></div>
+        <div id="v-alt-box" class="wind-box"><span class="wind-label">🚀 Vent Alt (<span id="h-label-wind">0</span>m)</span><span class="wind-main"><span id="v-alt">--</span><span class="unit">km/h</span></span></div>
+        <div id="gust-sol-box" class="wind-box"><span class="wind-label" style="color:inherit">⚠️ Rafale Sol</span><span class="wind-main"><span id="g-sol-val">--</span><span class="unit">km/h</span></span></div>
+        <div id="gust-alt-box" class="wind-box"><span class="wind-label" style="color:inherit">⚠️ Rafale Alt</span><span class="wind-main"><span id="g-alt-val">--</span><span class="unit">km/h</span></span></div>
+    </div>
+
+    <div class="stats-row">
+        <div class="stat-item"><span class="wind-label" style="color:var(--sub)">☁️ Nuages</span><span id="cloud-val" class="stat-val">-- %</span></div>
+        <div class="stat-item"><span class="wind-label" style="color:var(--sub)">📏 Plafond</span><span class="stat-val">1200m</span></div>
+        <div class="stat-item"><span class="wind-label" style="color:var(--sub)">👁️ Visib.</span><span class="stat-val">>10km</span></div>
+    </div>
+
+    <div class="weather-row">
+        <div class="weather-box"><span class="wind-label">CIEL ACTUEL</span><span id="main-weather-icon" class="dynamic-weather-display">--</span><span id="weather-desc">Chargement...</span></div>
+        <div class="weather-box"><span class="wind-label">TEMP. SOL</span><span class="wind-main" style="font-size:32px; margin-top:10px;"><span id="main-temp-val">--</span><span class="unit">°C</span></span></div>
+    </div>
+
+    <div class="stats-row">
+        <div class="stat-item"><span class="wind-label" style="font-size:8px;color:var(--sub)">📡 KP Solaire</span><span class="stat-val">2.3</span></div>
+        <div class="stat-item"><span class="wind-label" style="font-size:8px;color:var(--sub)">🕒 Temps vol</span><span id="time-val" class="stat-val">--min</span></div>
+        <div id="dew-box" class="stat-item"><span id="dew-label" class="wind-label" style="font-size:8px;color:var(--sub)">💧 Rosée</span><span id="dew-val" class="stat-val">--°C</span></div>
+    </div>
+
+    <div class="forecast-section">
+        <span class="wind-label" style="color:var(--sub); text-align: left;">📈 PRÉVISIONS 3H <span id="wind-trend" style="margin-left:5px; color:var(--accent)"></span></span>
+        <div id="forecast-container" class="forecast-grid"></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.784, 4.191], 15);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
+    let marker = L.circleMarker([43.784, 4.191], { color: '#0a84ff', radius: 6, fillOpacity: 1, fillColor: 'white', weight: 3 }).addTo(map);
+
+    let currentData = { vSol: 0, gSol: 0, tSol: 0, tdSol: 0, clouds: 0, weatherCode: 0, forecasts: [], windDir: 0 };
+    const wmoFrench = { 0: "Ciel dégagé", 1: "Principalement dégagé", 2: "Partiellement nuageux", 3: "Couvert", 45: "Brouillard", 48: "Brouillard givrant", 51: "Bruine légère", 53: "Bruine modérée", 55: "Bruine dense", 61: "Pluie faible", 63: "Pluie modérée", 65: "Pluie forte", 71: "Chute de neige légère", 73: "Chute de neige modérée", 75: "Chute de neige forte", 80: "Averses de pluie faibles", 81: "Averses de pluie modérées", 82: "Averses violentes", 95: "Orage faible", 96: "Orage avec grêle" };
+
+    function toggleTheme() { document.body.classList.toggle('light-mode'); }
+    function getCardinal(angle) { const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO']; return directions[Math.round(angle / 45) % 8]; }
+
+    async function searchLocation() {
+        const query = document.getElementById('search-input').value;
+        if (!query) return;
+        try {
+            const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+            const data = await resp.json();
+            if (data && data.length > 0) {
+                const lat = parseFloat(data[0].lat); const lon = parseFloat(data[0].lon);
+                map.setView([lat, lon], 15); marker.setLatLng([lat, lon]);
+                fetchWeatherData();
+            } else { alert("Lieu non trouvé."); }
+        } catch (e) { alert("Erreur lors de la recherche."); }
+    }
+
+    document.getElementById('search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchLocation(); });
+
+    function centerMap() {
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(p => {
+                const lat = p.coords.latitude, lon = p.coords.longitude;
+                map.setView([lat, lon], 17); marker.setLatLng([lat, lon]);
+                fetchWeatherData();
+            }, (err) => alert("Erreur GPS : " + err.message), {enableHighAccuracy: true});
+        }
+    }
+
+    function mapWMO(code, hour) {
+        const isDay = hour >= 7 && hour < 18;
+        if (code <= 1) return isDay ? "☀️" : "🌙";
+        if (code <= 3) return "⛅";
+        if (code <= 48) return "🌫️";
+        if (code <= 55 || code <= 65 || code <= 82) return "🌧️";
+        if (code <= 77) return "❄️";
+        if (code <= 99) return "⛈️";
+        return "☀️";
+    }
+
+    async function fetchWeatherData() {
+        const icon = document.getElementById('sync-icon');
+        const connDot = document.getElementById('conn-status');
+        icon.classList.add('spinning');
+        const pos = marker.getLatLng();
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.lat}&longitude=${pos.lng}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,cloud_cover&hourly=temperature_2m,weather_code,wind_speed_10m&timezone=auto`;
+
+        try {
+            const response = await fetch(url); const data = await response.json();
+            connDot.classList.add('online');
+            currentData.tSol = Math.round(data.current.temperature_2m);
+            currentData.tdSol = Math.round(data.current.temperature_2m - ((100 - data.current.relative_humidity_2m)/5));
+            currentData.vSol = Math.round(data.current.wind_speed_10m);
+            currentData.gSol = Math.round(data.current.wind_gusts_10m);
+            currentData.windDir = data.current.wind_direction_10m;
+            currentData.clouds = data.current.cloud_cover;
+            currentData.weatherCode = data.current.weather_code;
+
+            const nowTime = new Date(data.current.time);
+            const hourIndex = data.hourly.time.findIndex(t => new Date(t).getTime() === nowTime.getTime());
+            currentData.forecasts = [];
+            for(let i=1; i<=3; i++) {
+                const targetIdx = hourIndex + i;
+                if(data.hourly.time[targetIdx]) {
+                    currentData.forecasts.push({ t: Math.round(data.hourly.temperature_2m[targetIdx]), v: Math.round(data.hourly.wind_speed_10m[targetIdx]), code: data.hourly.weather_code[targetIdx], hour: new Date(data.hourly.time[targetIdx]).getHours() });
+                }
+            }
+
+            const vFutur = currentData.forecasts[2]?.v || currentData.vSol;
+            const trendEl = document.getElementById('wind-trend');
+            if (vFutur > currentData.vSol + 3) trendEl.innerText = "↗ (forcit)";
+            else if (vFutur < currentData.vSol - 3) trendEl.innerText = "↘ (faiblit)";
+            else trendEl.innerText = "→ (stable)";
+
+            document.getElementById('last-update').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            document.getElementById('main-weather-icon').innerText = mapWMO(currentData.weatherCode, nowTime.getHours());
+            document.getElementById('weather-desc').innerText = wmoFrench[currentData.weatherCode] || "Inconnu";
+            document.getElementById('main-temp-val').innerText = currentData.tSol;
+            document.getElementById('compass-arrow').style.transform = `rotate(${currentData.windDir}deg)`;
+            document.getElementById('compass-text').innerText = getCardinal(currentData.windDir) + " | " + currentData.windDir + "°";
+            updateForecastUI(); runAnalysis();
+        } catch (e) { connDot.classList.remove('online'); } finally { icon.classList.remove('spinning'); }
+    }
+
+    function updateForecastUI() {
+        const container = document.getElementById('forecast-container');
+        container.innerHTML = '';
+        currentData.forecasts.forEach((f, i) => {
+            container.innerHTML += `<div class="f-box"><span class="f-time">H+${i+1}</span><span class="f-icon">${mapWMO(f.code, f.hour)}</span><span class="f-data">${f.t}°C</span><span class="f-wind">${f.v} km/h</span></div>`;
+        });
+    }
+
+    function runAnalysis() {
+        const h = parseInt(document.getElementById('h-slider').value);
+        document.getElementById('h-label').innerText = h; document.getElementById('h-label-wind').innerText = h;
+        const vAlt = Math.round(currentData.vSol * Math.pow((h + 10) / 10, 0.25));
+        const gAlt = Math.round(vAlt * 1.45);
+        document.getElementById('v-sol-val').innerText = currentData.vSol;
+        document.getElementById('g-sol-val').innerText = currentData.gSol;
+        document.getElementById('v-alt').innerText = vAlt;
+        document.getElementById('g-alt-val').innerText = gAlt;
+        document.getElementById('cloud-val').innerText = currentData.clouds + " %";
+        const tAlt = (currentData.tSol - (h * 0.0065)).toFixed(1);
+        const tdAlt = (currentData.tdSol - (h * 0.0020)).toFixed(1);
+        const spread = tAlt - tdAlt;
+        document.getElementById('temp-val-top').innerText = tAlt;
+        document.getElementById('dew-val').innerText = tdAlt + "°C";
+
+        const statusCard = document.getElementById('status-card');
+        const statusTxt = document.getElementById('status-txt');
+        const dewBox = document.getElementById('dew-box');
+        
+        function applyColor(box, val, o, r) {
+            if (val > r) { box.style.background = "var(--red)"; box.style.color = "#fff"; }
+            else if (val > o) { box.style.background = "var(--orange)"; box.style.color = "#fff"; }
+            else { box.style.background = "var(--green)"; box.style.color = "#000"; }
+        }
+
+        applyColor(document.getElementById('v-sol-box'), currentData.vSol, 20, 30);
+        applyColor(document.getElementById('gust-sol-box'), currentData.gSol, 28, 40);
+        applyColor(document.getElementById('v-alt-box'), vAlt, 20, 30);
+        applyColor(document.getElementById('gust-alt-box'), gAlt, 28, 40);
+
+        if (spread <= 1.5) {
+            dewBox.style.background = "var(--red)"; statusCard.style.borderLeftColor = "var(--red)";
+            statusTxt.innerText = "RISQUE DE GIVRAGE"; statusTxt.style.color = "var(--red)";
+        } else {
+            dewBox.style.background = "var(--card)"; statusCard.style.borderLeftColor = "var(--green)";
+            statusTxt.innerText = "OPÉRATIONNEL"; statusTxt.style.color = "var(--green)";
+        }
+        const time = Math.max(0, Math.floor((31 / (1 + (gAlt/45)*0.4)) * 0.8 - (h/120)));
+        document.getElementById('time-val').innerText = time + "min";
+    }
+
+    fetchWeatherData();
+    setInterval(fetchWeatherData, 10 * 60 * 1000); 
+</script>
+</body>
+</html>
